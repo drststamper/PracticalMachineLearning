@@ -1,0 +1,6 @@
+---
+title: "Practical Machine Learning"
+author: "drs. T. Stamper"
+date: "Tuesday, October 21, 2014"
+output: html_document
+---
