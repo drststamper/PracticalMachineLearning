@@ -1,6 +1,92 @@
 ---
 title: "Practical Machine Learning"
 author: "drs. T. Stamper"
-date: "Tuesday, October 21, 2014"
+date: "Saturday, October 25, 2014"
 output: html_document
 ---
+
+###Exploratory data analysis & data cleanup
+
+First, the necessary packages and data files were loaded. When the data was explored, it became apparent that 
+there are a large number of columns with NA's and the distribution of cases over the 5 classes is roughly equal, with the exception of classe A (Figure A)
+
+```{r}
+#load data and perform exploratory analysis
+require(ggplot2)
+require(caret)
+require(randomForest)
+data <- read.csv("pml-training.csv", stringsAsFactors=FALSE, na.strings=c("NA", "NULL"))
+testdata <- read.csv("pml-testing.csv", stringsAsFactors=FALSE, na.strings=c("NA", "NULL"))
+data$classe <- as.factor(data$classe)
+
+#quick look at class distribution
+class.histogram <- ggplot(data, aes(x=classe, fill = classe)) +
+  geom_histogram()+
+  labs(title = "Figure A: histogram of classe variable", x = "the class", y = "total nr of cases for that class")
+class.histogram
+```
+
+Upon manual inspection of a row of data in the testing and training data files, it was observed that a number of columns were consistently filled and some weren't. This observation was used in the selection of columns to include in training and applying the algorithm (see regular expression in code):
+
+```{r}
+#select only non-NA value columns for training + testdata files
+indices <- grepl("_x$|_y$|_z$|^roll_|^pitch_|^yaw_|^total_accel_|classe", names(data))
+data <- data[,indices]
+indices_test <- grepl("_x$|_y$|_z$|^roll_|^pitch_|^yaw_|^total_accel_|problem_id", names(testdata))
+testdata <- testdata[,indices_test]
+```
+
+###Building the model
+
+With the columns selected (53 in total for both training and test data), it was possible to build a model. The choice has been made to apply random forests, using the package *randomForest*. Taking into account possible overfitting of the model on the training data, the original training data was split 60/40 in a training/validation set. The Out-of-Sample error estimate was based on the OOB error (Out-Of-Bag) and 1-Accuracy when the model was trained and applied to the validation set. In order to make results reproducible, a seed was set:
+
+```{r}
+#make results reproducible by setting seed
+set.seed(123)
+
+#divide train data into train (60%) & validation (40%)
+inTrain <- createDataPartition(y=data$classe, p=0.6, list=FALSE)
+training <- data[inTrain,]
+validation <- data[-inTrain,]
+
+#train model (randomForest, using 600 trees instead of 500)
+model <- randomForest(x=training[,-53], y=training$classe, ntree=600, keep.forest=TRUE)
+model 
+```
+
+###Estimating the OOS (out-of-sample error)
+
+From the model information, the OOB error was estimated at 0.64%. The algorithm is believed to be highly accurate. After applying the trained model to the validation set and creating a confusionMatrix, the Accuracy (99,4%, OOS error = 1-99,4 = 0.6%) confirmed this observation. The estimate from training the model was quite accurate. 
+
+```{r}
+#validate model with validation set
+confusionMatrix(validation$classe, predict(model, validation))
+```
+
+###Predicting the 20 cases for the 2nd part of the assignment
+
+Given this information, I was confident in my ability to use the algorithm to predict the 20 cases of the test data. After submitting al 20 cases, I saw that all 20 cases were predicted correctly by the model. For the record, see the code below, which was used to perform the predicting part of this assignment:
+
+```{r, results='hide'}
+#apply to testdata
+answers <- as.character(predict(model, testdata))
+
+#taken from provided code on submission page of assignment
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+#write the answers for the prediction to files
+pml_write_files(answers)
+```
+
+###Some final notes
+- the application of the randomforest algorithm was my 2nd attempt; first, I had applied naive bayes, but the accuracy of this model was too low (64%) (after dealing with columns with only NA's)
+- the choice to use the random forest algorithm/function/package came from reading a number of posts in several threads on the course forum
+- originally, I got stuck at my first attempt (with naive bayes), because I failed to properly investigate the datasets. A shame, because this investigation (finding out about the columns with only NA's and similarity of test & training data columns) made all the difference. I have learned from this
+- cross-validation is done in random forests by the number of trees grown (I chose 600, which is 100 above the standard number) and I believe also the nr of variables considered at each split in a tree. I therefore, did not add any cross-validation parameters to the model
+- I had considered the possibility of using weights for the classes, since A was 'overrepresented', but it turned out that the randomforest algorithm had no problems with this
